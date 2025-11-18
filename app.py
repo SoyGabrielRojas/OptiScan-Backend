@@ -11,7 +11,7 @@ CORS(app)
 # Ruta al entorno virtual
 venv_path = "./venv"
 python_path = os.path.join(venv_path, "Scripts", "python")
-main_script_path = os.path.join(venv_path, "main.py")
+main_script_path = os.path.join(os.path.dirname(__file__), "main.py")
 temp_image_path = os.path.join(venv_path, "cuadrado.jpg")  # Debe coincidir con main.py
 
 @app.route('/check-camera', methods=['GET'])
