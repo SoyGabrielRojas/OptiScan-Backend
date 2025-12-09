@@ -10,6 +10,7 @@ import os
 from datetime import datetime
 import tempfile
 import traceback
+import unicodedata
 
 
 class PDFReportGenerator:
@@ -18,81 +19,17 @@ class PDFReportGenerator:
         print("✅ PDFReportGenerator inicializado")
         
     def texto_seguro(self, texto):
-        """Convertir texto a formato seguro para FPDF"""
+        """Convertir texto a formato seguro para FPDF - SIN ACENTOS"""
         if texto is None:
             return ""
         
-        # Reemplazar caracteres problemáticos y emojis
-        reemplazos = {
-            '•': '-',  # bullet point por guión
-            '´': "'",  # acento agudo por apóstrofe simple
-            '`': "'",  # acento grave por apóstrofe simple
-            '“': '"',  # comillas curly por comillas rectas
-            '”': '"',
-            '‘': "'",
-            '’': "'",
-            '✅': '[OK]',   # emoji check
-            '❌': '[ERROR]', # emoji error
-            '⚠️': '[ADVERTENCIA]', # emoji advertencia
-            '🔍': '[BUSCAR]', # emoji lupa
-            '🎨': '[DIBUJO]', # emoji arte
-            '📄': '[DOC]',   # emoji documento
-            '📊': '[GRAFICO]', # emoji gráfico
-            '🧹': '[LIMPIAR]', # emoji limpieza
-            '🔄': '[ACTUALIZAR]', # emoji actualizar
-            '📷': '[CAMARA]', # emoji cámara
-            '🎯': '[OBJETIVO]', # emoji objetivo
-            '🖼️': '[IMAGEN]', # emoji imagen
-            '📋': '[LISTA]',  # emoji lista
-            '🔎': '[BUSCAR]', # emoji lupa
-            '📏': '[MEDIR]',  # emoji regla
-            '👁️': '[OJO]',   # emoji ojo
-            '💎': '[DIAMANTE]', # emoji diamante
-            '🟦': '[AZUL]',   # emoji cuadrado azul
-            '🟢': '[VERDE]',  # emoji círculo verde
-            '🔵': '[AZUL]',   # emoji círculo azul
-            '🟣': '[MORADO]', # emoji círculo morado
-            '🟠': '[NARANJA]', # emoji círculo naranja
-            '🟡': '[AMARILLO]', # emoji círculo amarillo
-            '⚫': '[NEGRO]',  # emoji círculo negro
-            '⬛': '[NEGRO]',  # emoji cuadrado negro
-            '⬜': '[BLANCO]', # emoji cuadrado blanco
-            '🔴': '[ROJO]',   # emoji círculo rojo
-            '👍': '[LIKE]',   # emoji pulgar arriba
-            '👎': '[DISLIKE]', # emoji pulgar abajo
-            '⭐': '[ESTRELLA]', # emoji estrella
-            '✨': '[BRILAR]', # emoji brillar
-            '🔥': '[FUEGO]',  # emoji fuego
-            '💯': '[100]',    # emoji 100
-            '🎉': '[CELEBRAR]', # emoji celebrar
-            '🚀': '[COHETE]', # emoji cohete
-            '💡': '[IDEA]',   # emoji idea
-            '📌': '[PUNTO]',  # emoji punto
-            '📍': '[UBICACION]', # emoji ubicación
-            '🛠️': '[HERRAMIENTA]', # emoji herramienta
-            '⚙️': '[ENGRANAJE]', # emoji engranaje
-            '🔧': '[HERRAMIENTA]', # emoji herramienta
-            '🔨': '[MARTILLO]', # emoji martillo
-            '⛏️': '[PICO]',   # emoji pico
-            '💼': '[MALETIN]', # emoji maletín
-            '📁': '[CARPETA]', # emoji carpeta
-            '📂': '[CARPETA]', # emoji carpeta abierta
-            '📃': '[DOCUMENTO]', # emoji documento
-            '📜': '[PAPEL]',  # emoji pergamino
-            '📝': '[NOTA]',   # emoji nota
-            '📋': '[PORTAPAPELES]', # emoji portapapeles
-            '📅': '[CALENDARIO]', # emoji calendario
-            '🕒': '[TIEMPO]', # emoji reloj
-            '⏰': '[ALARMA]', # emoji alarma
-            '⌛': '[RELARENA]', # emoji reloj de arena
-            '⏳': '[RELARENA]', # emoji reloj de arena corriendo
-        }
-        
+        # Eliminar acentos y caracteres especiales
         texto_seguro = str(texto)
-        for char_original, char_reemplazo in reemplazos.items():
-            texto_seguro = texto_seguro.replace(char_original, char_reemplazo)
         
-        # Eliminar cualquier otro carácter Unicode que no sea compatible con Latin-1
+        # Primero normalizar los caracteres Unicode (separar acentos)
+        texto_seguro = unicodedata.normalize('NFKD', texto_seguro)
+        
+        # Eliminar todos los caracteres no ASCII
         texto_seguro = texto_seguro.encode('ascii', 'ignore').decode('ascii')
         
         return texto_seguro
@@ -244,7 +181,7 @@ class PDFReportGenerator:
             # Crear figura con matplotlib
             plt.figure(figsize=(14, 10))
             plt.imshow(cv2.cvtColor(imagen, cv2.COLOR_BGR2RGB))
-            plt.title(f"ANÁLISIS DE FORMA FACIAL - {forma}", fontsize=16, weight='bold')
+            plt.title(f"ANALISIS DE FORMA FACIAL - {forma}", fontsize=16, weight='bold')
             plt.axis('off')
             
             # Guardar figura temporal
@@ -260,6 +197,237 @@ class PDFReportGenerator:
             print(f"❌ Error creando figura directa: {e}")
             print(f"🔍 Traceback: {traceback.format_exc()}")
             return None
+
+    def hex_to_rgb(self, hex_color):
+        """Convertir color HEX a RGB"""
+        hex_color = hex_color.lstrip('#')
+        if len(hex_color) == 6:
+            return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+        return (0, 0, 0)
+    
+    def es_color_claro(self, hex_color):
+        """Determinar si un color HEX es claro (necesita borde para visibilidad)"""
+        try:
+            hex_color = hex_color.lstrip('#')
+            if len(hex_color) == 6:
+                r = int(hex_color[0:2], 16)
+                g = int(hex_color[2:4], 16)
+                b = int(hex_color[4:6], 16)
+                
+                # Calcular luminosidad (fórmula estándar)
+                luminosidad = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+                
+                # Si la luminosidad es mayor a 0.7, es un color claro
+                return luminosidad > 0.7
+            return False
+        except:
+            return False
+
+    def dibujar_circulo_color(self, pdf, x, y, hex_color, diametro=10):
+        """Dibujar un círculo con el color especificado - VERSIÓN MEJORADA"""
+        try:
+            hex_color = hex_color.lstrip('#')
+            
+            if len(hex_color) == 6:
+                r = int(hex_color[0:2], 16)
+                g = int(hex_color[2:4], 16)
+                b = int(hex_color[4:6], 16)
+            elif len(hex_color) == 3:
+                r = int(hex_color[0] * 2, 16)
+                g = int(hex_color[1] * 2, 16)
+                b = int(hex_color[2] * 2, 16)
+            else:
+                r, g, b = 0, 0, 0
+            
+            # Configurar color de relleno
+            pdf.set_fill_color(r, g, b)
+            
+            # Dibujar círculo con relleno
+            pdf.ellipse(x, y, diametro, diametro, 'F')
+            
+            # Restaurar color de relleno a blanco
+            pdf.set_fill_color(255, 255, 255)
+            
+            # Agregar borde sutil para todos los círculos
+            pdf.set_draw_color(100, 100, 100)
+            pdf.set_line_width(0.1)
+            pdf.ellipse(x, y, diametro, diametro, 'D')
+            
+            # Restaurar color de dibujo
+            pdf.set_draw_color(0, 0, 0)
+            
+            return True
+        except Exception as e:
+            print(f"⚠️ Error dibujando círculo color {hex_color}: {e}")
+            return False
+
+    def generar_seccion_tono_piel(self, pdf, tono_piel):
+        """Generar sección de análisis de tono de piel con círculos de color mejorados - SIN BULLETS"""
+        if not tono_piel or tono_piel.get('estado') != 'exitoso':
+            return
+        
+        print("🎨 PDF: Agregando sección de tono de piel con círculos de color...")
+        
+        # Agregar página para el análisis de tono
+        pdf.add_page()
+        
+        pdf.set_font('Arial', 'B', 24)
+        pdf.cell(0, 20, self.texto_seguro('ANALISIS DE TONO DE PIEL'), 0, 1, 'C')
+        pdf.ln(10)
+        
+        clasificacion = tono_piel.get('clasificacion', {})
+        recomendaciones = tono_piel.get('recomendaciones', {})
+        
+        # Información de clasificación - SIN BULLETS
+        pdf.set_font('Arial', 'B', 16)
+        pdf.cell(0, 12, self.texto_seguro('CLASIFICACION DEL TONO'), 0, 1, 'L')
+        pdf.ln(5)
+        
+        pdf.set_font('Arial', '', 12)
+        
+        # Información de clasificación SIN bullets
+        pdf.multi_cell(0, 8, self.texto_seguro(f"Categoria: {clasificacion.get('categoria', 'No disponible')}"))
+        pdf.multi_cell(0, 8, self.texto_seguro(f"Subtipo: {clasificacion.get('subtipo', 'No disponible')}"))
+        pdf.multi_cell(0, 8, self.texto_seguro(f"Escala Fitzpatrick: {clasificacion.get('fitzpatrick', 'No disponible')}"))
+        pdf.multi_cell(0, 8, self.texto_seguro(f"Descripcion: {clasificacion.get('descripcion', 'No disponible')}"))
+        
+        # Mostrar color detectado con círculo
+        color_hex = clasificacion.get('color_hex', '#000000')
+        color_rgb = clasificacion.get('color_rgb', [0, 0, 0])
+        
+        pdf.ln(10)
+        pdf.set_font('Arial', 'B', 14)
+        pdf.cell(0, 10, self.texto_seguro("COLOR DETECTADO DE TU PIEL"), 0, 1, 'L')
+        
+        # Posición para el círculo del color detectado
+        x_circle = 20
+        y_circle = pdf.get_y() + 5
+        
+        # Dibujar círculo grande para el color detectado
+        self.dibujar_circulo_color(pdf, x_circle, y_circle, color_hex, diametro=15)
+        
+        # Información del color detectado al lado del círculo
+        pdf.set_xy(x_circle + 25, y_circle)
+        pdf.set_font('Arial', 'B', 12)
+        pdf.cell(0, 6, self.texto_seguro("Color de tu piel:"), 0, 1)
+        
+        pdf.set_xy(x_circle + 25, y_circle + 7)
+        pdf.set_font('Arial', '', 10)
+        pdf.cell(0, 5, self.texto_seguro(f"HEX: {color_hex}"), 0, 1)
+        
+        pdf.set_xy(x_circle + 25, y_circle + 14)
+        pdf.cell(0, 5, self.texto_seguro(f"RGB: ({color_rgb[0]}, {color_rgb[1]}, {color_rgb[2]})"), 0, 1)
+        
+        # Verificar si el color es muy claro y agregar borde para visibilidad
+        if sum(color_rgb) > 600:  # Si es un color claro
+            pdf.set_draw_color(0, 0, 0)  # Borde negro
+            pdf.set_line_width(0.2)
+            pdf.ellipse(x_circle, y_circle, 15, 15, 'D')  # Dibujar círculo vacío como borde
+        
+        pdf.ln(25)  # Más espacio después del color detectado
+        
+        # Recomendaciones de colores
+        pdf.set_font('Arial', 'B', 16)
+        pdf.cell(0, 12, self.texto_seguro('COLORES RECOMENDADOS PARA TUS LENTES'), 0, 1, 'L')
+        pdf.ln(5)
+        
+        colores_recomendados = recomendaciones.get('colores_recomendados', [])
+        
+        if colores_recomendados:
+            # Configurar para dos columnas
+            page_width = 210  # Ancho A4 en mm
+            margin = 10
+            col_width = (page_width - 3 * margin) / 2
+            
+            for i, color in enumerate(colores_recomendados):
+                hex_color = color.get('hex', '#000000')
+                nombre = color.get('nombre', 'No disponible')
+                descripcion = color.get('descripcion', 'No disponible')
+                
+                # Determinar posición (izquierda o derecha)
+                if i % 2 == 0:  # Columna izquierda
+                    x_pos = margin
+                else:  # Columna derecha
+                    x_pos = margin + col_width + margin
+                
+                # Si estamos en la segunda columna o se acabó la página, agregar nueva línea
+                if i % 2 == 0:
+                    y_start = pdf.get_y()
+                else:
+                    pdf.set_xy(x_pos, y_start)
+                
+                # Altura máxima para cada bloque de color
+                bloque_altura = 35
+                
+                # Dibujar contenedor para el color
+                pdf.set_draw_color(200, 200, 200)
+                pdf.set_line_width(0.1)
+                pdf.rect(x_pos, pdf.get_y(), col_width, bloque_altura)
+                
+                # Dibujar círculo de color (más grande)
+                circle_x = x_pos + 5
+                circle_y = pdf.get_y() + 5
+                self.dibujar_circulo_color(pdf, circle_x, circle_y, hex_color, diametro=12)
+                
+                # Verificar si el color es muy claro y agregar borde
+                if self.es_color_claro(hex_color):
+                    pdf.set_draw_color(0, 0, 0)
+                    pdf.set_line_width(0.2)
+                    pdf.ellipse(circle_x, circle_y, 12, 12, 'D')
+                
+                # Información del color
+                text_x = circle_x + 20
+                text_y = circle_y
+                
+                pdf.set_xy(text_x, text_y)
+                pdf.set_font('Arial', 'B', 11)
+                pdf.cell(col_width - 25, 6, self.texto_seguro(nombre), 0, 1)
+                
+                pdf.set_xy(text_x, text_y + 7)
+                pdf.set_font('Arial', '', 9)
+                pdf.cell(col_width - 25, 5, self.texto_seguro(f"HEX: {hex_color}"), 0, 1)
+                
+                # Descripción en múltiples líneas
+                pdf.set_xy(text_x, text_y + 13)
+                pdf.set_font('Arial', 'I', 8)
+                
+                # Dividir la descripción si es muy larga
+                descripcion_texto = self.texto_seguro(descripcion)
+                if len(descripcion_texto) > 50:
+                    descripcion_texto = descripcion_texto[:47] + "..."
+                
+                pdf.multi_cell(col_width - 25, 4, descripcion_texto)
+                
+                # Si estamos en la columna derecha, movernos a la siguiente fila
+                if i % 2 == 1 or i == len(colores_recomendados) - 1:
+                    pdf.ln(bloque_altura + 5)
+                
+                # Si estamos cerca del final de la página, agregar nueva página
+                if pdf.get_y() > 250 and i < len(colores_recomendados) - 1:
+                    pdf.add_page()
+                    pdf.ln(10)
+        
+        # Consejos y tonos a evitar (en nueva página si es necesario)
+        if pdf.get_y() > 200:
+            pdf.add_page()
+        
+        pdf.ln(10)
+        pdf.set_font('Arial', 'B', 16)
+        pdf.cell(0, 12, self.texto_seguro('CONSEJOS DE ESTILO'), 0, 1, 'L')
+        pdf.ln(5)
+        
+        pdf.set_font('Arial', '', 10)
+        if recomendaciones.get('consejo_general'):
+            consejo = self.texto_seguro(recomendaciones['consejo_general'])
+            pdf.multi_cell(0, 6, f"{consejo}")
+        
+        if recomendaciones.get('tonos_evitar'):
+            pdf.ln(5)
+            pdf.set_font('Arial', 'B', 12)
+            pdf.cell(0, 8, self.texto_seguro("Tonos a evitar:"), 0, 1, 'L')
+            pdf.set_font('Arial', '', 10)
+            for tono in recomendaciones['tonos_evitar']:
+                pdf.multi_cell(0, 6, self.texto_seguro(f"{tono}"))
 
     def generar_informe_detallado_medidas(self, pdf, medidas, recomendaciones=None):
         """Generar seccion detallada de medidas con subtitulos, explicaciones y recomendaciones opticas"""
@@ -563,11 +731,11 @@ class PDFReportGenerator:
             pdf.set_font('Arial', '', 12)
             forma = analisis.get('forma', 'No detectada')
             # Usar texto_seguro en lugar de codificación manual
-            forma_segura = self.texto_seguro(forma)
-            descripcion_segura = self.texto_seguro(analisis.get('descripcion', 'No disponible'))
+            forma_seguro = self.texto_seguro(forma)
+            descripcion_seguro = self.texto_seguro(analisis.get('descripcion', 'No disponible'))
             
-            pdf.multi_cell(0, 8, self.texto_seguro(f"Forma facial detectada: {forma_segura}"))
-            pdf.multi_cell(0, 8, self.texto_seguro(f"Descripcion: {descripcion_segura}"))
+            pdf.multi_cell(0, 8, self.texto_seguro(f"Forma facial detectada: {forma_seguro}"))
+            pdf.multi_cell(0, 8, self.texto_seguro(f"Descripcion: {descripcion_seguro}"))
             pdf.ln(8)
             
             # Figura
@@ -583,7 +751,7 @@ class PDFReportGenerator:
                     pdf.ln(120)
                     print("✅ PDF: Figura agregada al PDF")
                 else:
-                    pdf.multi_cell(0, 8, self.texto_seguro("Figura de análisis no disponible"))
+                    pdf.multi_cell(0, 8, self.texto_seguro("Figura de analisis no disponible"))
                 
                 try:
                     os.remove(temp_figura)
@@ -591,7 +759,7 @@ class PDFReportGenerator:
                 except Exception as e:
                     print(f"⚠️ PDF: Error limpiando figura: {e}")
             else:
-                pdf.multi_cell(0, 8, self.texto_seguro("Figura de análisis no disponible"))
+                pdf.multi_cell(0, 8, self.texto_seguro("Figura de analisis no disponible"))
             
             # Página 2 - INFORME DETALLADO COMPLETO
             pdf.add_page()
@@ -610,6 +778,10 @@ class PDFReportGenerator:
                 medidas_completas, 
                 analisis.get('recomendaciones', [])
             )
+            
+            # Sección de tono de piel si está disponible
+            if 'tono_piel' in analisis:
+                self.generar_seccion_tono_piel(pdf, analisis['tono_piel'])
             
             pdf.output(output_path)
             print(f"✅ PDF: Generado exitosamente: {output_path}")

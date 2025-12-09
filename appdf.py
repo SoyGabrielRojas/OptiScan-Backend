@@ -11,6 +11,8 @@ import matplotlib.pyplot as plt
 from main_pdf import AnalizadorFormaRostroPDF
 from pdf import PDFReportGenerator
 import traceback
+import subprocess
+import json
 
 app = Flask(__name__)
 CORS(app)
@@ -18,6 +20,11 @@ CORS(app)
 # Inicializar analizador y generador de PDFs
 analizador = AnalizadorFormaRostroPDF()
 pdf_generator = PDFReportGenerator(analizador)
+
+# Configuración
+venv_path = "./venv"
+python_path = os.path.join(venv_path, "Scripts", "python")
+tonos_script_path = os.path.join(os.path.dirname(__file__), "tonos.py")
 
 def crear_figura_directamente(analisis):
     """Crear la figura de matplotlib directamente para debug"""
@@ -160,6 +167,39 @@ def crear_figura_directamente(analisis):
         print(f"🔍 Traceback: {traceback.format_exc()}")
         return None
 
+def ejecutar_analisis_tono(ruta_imagen):
+    """Ejecutar análisis de tono de piel"""
+    try:
+        print(f">>> Ejecutando análisis de tono para: {ruta_imagen}")
+        result = subprocess.run([
+            python_path,
+            tonos_script_path,
+            ruta_imagen
+        ], capture_output=True, text=True, timeout=30, encoding='utf-8')
+        
+        if result.returncode == 0:
+            # Buscar el JSON en la salida
+            lines = result.stdout.strip().split('\n')
+            json_line = None
+            
+            for line in reversed(lines):
+                line = line.strip()
+                if line.startswith('{') and line.endswith('}'):
+                    try:
+                        json.loads(line)
+                        json_line = line
+                        break
+                    except:
+                        continue
+            
+            if json_line:
+                return json.loads(json_line)
+        
+        return None
+    except Exception as e:
+        print(f"❌ Error ejecutando análisis de tono: {e}")
+        return None
+
 
 # ==========================
 # ENDPOINTS
@@ -200,13 +240,22 @@ def generate_pdf_report():
         except Exception as e:
             return jsonify({'success': False, 'error': f'Error procesando imagen: {str(e)}'}), 400
         
-        # Analizar
+        # Analizar forma de rostro
         analisis_result = analizador.analizar_rostro(temp_img_path)
+        
+        # Analizar tono de piel
+        tono_result = ejecutar_analisis_tono(temp_img_path)
+        
+        # Combinar resultados si el análisis de tono fue exitoso
+        if tono_result and tono_result.get('estado') == 'exitoso':
+            analisis_result['tono_piel'] = tono_result
+            print("✅ Análisis de tono de piel agregado al reporte")
         
         # DEBUG: Verificar estructura del análisis
         print(f"🔍 DEBUG - Análisis recibido:")
         print(f"  ✅ Forma: {analisis_result.get('forma')}")
         print(f"  ✅ Recomendaciones: {len(analisis_result.get('recomendaciones', []))}")
+        print(f"  ✅ Tono piel incluido: {'tono_piel' in analisis_result}")
         
         for i, rec in enumerate(analisis_result.get('recomendaciones', [])):
             print(f"  📋 Rec {i+1}: {rec.get('name')}")
@@ -219,7 +268,7 @@ def generate_pdf_report():
         if not analisis_result or analisis_result.get('estado') == 'error':
             return jsonify({'success': False, 'error': 'Error en análisis facial'}), 400
         
-        # Generar PDF usando el nuevo método
+        # Generar PDF usando el nuevo método (ahora con tono de piel)
         pdf_path = pdf_generator.procesar_imagen_y_generar_pdf(analisis_result, temp_pdf_path)
         
         if pdf_path and os.path.exists(pdf_path):
@@ -298,11 +347,15 @@ def health_check():
     return jsonify({
         "status": "healthy", 
         "service": "OptiScan PDF Generator",
-        "pdf_generator": "active"
+        "pdf_generator": "active",
+        "tonos_script_exists": os.path.exists(tonos_script_path)
     })
 
 
 if __name__ == '__main__':
     print(">>> Iniciando servidor Flask para PDF Generator...")
+    print(f">>> Python path: {python_path}")
+    print(f">>> Tonos script path: {tonos_script_path}")
+    print(f">>> Tonos script existe: {os.path.exists(tonos_script_path)}")
     print(">>> Servidor ejecutándose en http://0.0.0.0:5001")
     app.run(debug=True, port=5001, host='0.0.0.0')
