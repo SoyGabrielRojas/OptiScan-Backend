@@ -5,18 +5,17 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from fpdf import FPDF
 import base64
-import io
 import os
 from datetime import datetime
-import tempfile
 import traceback
 import unicodedata
-
+from mm import ConversorMedidasReales
 
 class PDFReportGenerator:
     def __init__(self, analizador):
         self.analizador = analizador
-        print("✅ PDFReportGenerator inicializado")
+        self.conversor = ConversorMedidasReales()
+        print("✅ PDFReportGenerator con conversor de medidas inicializado")
         
     def texto_seguro(self, texto):
         """Convertir texto a formato seguro para FPDF - SIN ACENTOS"""
@@ -260,6 +259,181 @@ class PDFReportGenerator:
         except Exception as e:
             print(f"⚠️ Error dibujando círculo color {hex_color}: {e}")
             return False
+        
+    def generar_seccion_medidas_reales(self, pdf, analisis):
+        """Generar sección de medidas reales (cm/mm) en el PDF - VERSIÓN CORREGIDA"""
+        try:
+            if 'medidas_convertidas' not in analisis:
+                print("⚠️ No hay medidas convertidas para mostrar")
+                return
+            
+            # Verificar si necesitamos nueva página
+            if pdf.get_y() > 200:  # Si estamos cerca del final de la página
+                pdf.add_page()
+            
+            medidas_convertidas = analisis['medidas_convertidas']
+            medidas_cm = medidas_convertidas.get('medidas_cm', {})
+            medidas_mm = medidas_convertidas.get('medidas_mm', {})
+            medidas_optometria = medidas_convertidas.get('medidas_optometria', {})
+            factor = medidas_convertidas.get('factor_conversion', {})
+            
+            # Título de la sección
+            pdf.set_font('Arial', 'B', 18)
+            titulo = self.texto_seguro('MEDIDAS EN UNIDADES REALES')
+            pdf.cell(0, 15, titulo, 0, 1, 'C')
+            pdf.ln(5)
+            
+            # Línea decorativa
+            pdf.set_draw_color(0, 0, 0)
+            pdf.set_line_width(0.5)
+            pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+            pdf.ln(8)
+            
+            # Información del factor de conversión
+            pdf.set_font('Arial', 'B', 12)
+            pdf.cell(0, 10, self.texto_seguro('FACTOR DE CONVERSIÓN DETECTADO:'), 0, 1, 'L')
+            pdf.set_font('Arial', '', 10)
+            
+            pixeles_por_cm = factor.get('pixeles_por_cm', 37.8)
+            pdf.multi_cell(0, 6, self.texto_seguro(f"• Píxeles por centímetro: {pixeles_por_cm:.2f} px/cm"))
+            pdf.multi_cell(0, 6, self.texto_seguro(f"• Píxeles por milímetro: {pixeles_por_cm/10:.2f} px/mm"))
+            
+            # Referencia detectada
+            if analisis.get('deteccion_referencia') and analisis['deteccion_referencia'].get('deteccion'):
+                deteccion = analisis['deteccion_referencia']['deteccion']
+                if 'dimensiones_px' in deteccion:
+                    dims = deteccion['dimensiones_px']
+                    pdf.multi_cell(0, 6, self.texto_seguro(
+                        f"• Referencia detectada: {dims.get('ancho', 0)}x{dims.get('alto', 0)} píxeles = 5x5 cm"
+                    ))
+            else:
+                pdf.multi_cell(0, 6, self.texto_seguro("• Nota: Usando factor de conversión estimado"))
+            
+            pdf.ln(8)
+            
+            # Tabla de medidas convertidas
+            pdf.set_font('Arial', 'B', 14)
+            pdf.cell(0, 10, self.texto_seguro('TABLA DE MEDIDAS CONVERTIDAS'), 0, 1, 'L')
+            pdf.ln(5)
+            
+            # Encabezados de tabla
+            pdf.set_font('Arial', 'B', 9)
+            pdf.cell(80, 8, self.texto_seguro('MEDIDA'), 1, 0, 'C')
+            pdf.cell(35, 8, self.texto_seguro('CM'), 1, 0, 'C')
+            pdf.cell(35, 8, self.texto_seguro('MM'), 1, 1, 'C')
+            
+            # Mapeo de nombres
+            nombres_medidas = {
+                'A': 'Largo del Rostro',
+                'B': 'Ancho de Pómulos',
+                'C': 'Ancho de Frente',
+                'D': 'Ancho de Mandíbula',
+                'E': 'Ancho entre Sienes',
+                'F': 'Distancia entre Ojos',
+                'DNP_I': 'DNP Izquierda',
+                'DNP_D': 'DNP Derecha',
+                'DIP': 'Distancia Interpupilar'
+            }
+            
+            pdf.set_font('Arial', '', 9)
+            
+            for clave, nombre in nombres_medidas.items():
+                if f'{clave}_cm' in medidas_cm:
+                    cm_val = medidas_cm[f'{clave}_cm']
+                    mm_val = medidas_mm.get(f'{clave}_mm', cm_val * 10)
+                    
+                    # Verificar si necesitamos nueva página antes de agregar fila
+                    if pdf.get_y() > 250:  # Si estamos cerca del final
+                        pdf.add_page()
+                    
+                    pdf.cell(80, 8, self.texto_seguro(nombre), 1, 0, 'L')
+                    pdf.cell(35, 8, f"{cm_val:.2f}", 1, 0, 'C')
+                    pdf.cell(35, 8, f"{mm_val:.1f}", 1, 1, 'C')
+            
+            pdf.ln(10)
+            
+            # Recomendaciones para gafas
+            if medidas_optometria:
+                # Verificar espacio para esta sección
+                if pdf.get_y() > 220:
+                    pdf.add_page()
+                
+                pdf.set_font('Arial', 'B', 14)
+                pdf.cell(0, 10, self.texto_seguro('RECOMENDACIONES PARA GAFAS'), 0, 1, 'L')
+                pdf.ln(5)
+                
+                pdf.set_font('Arial', 'B', 11)
+                pdf.cell(0, 7, self.texto_seguro('Medidas Pupilares:'), 0, 1, 'L')
+                pdf.set_font('Arial', '', 10)
+                
+                if 'DNP_I_cm' in medidas_optometria and 'DNP_D_cm' in medidas_optometria:
+                    dnp_i = medidas_optometria['DNP_I_cm']
+                    dnp_d = medidas_optometria['DNP_D_cm']
+                    dip = medidas_optometria.get('DIP_cm', 0)
+                    
+                    pdf.multi_cell(0, 6, self.texto_seguro(f"• DNP Izquierda: {dnp_i:.2f} cm"))
+                    pdf.multi_cell(0, 6, self.texto_seguro(f"• DNP Derecha: {dnp_d:.2f} cm"))
+                    pdf.multi_cell(0, 6, self.texto_seguro(f"• DIP Total: {dip:.2f} cm"))
+                    
+                    # Verificar suma DNP_I + DNP_D ≈ DIP
+                    suma_dnp = dnp_i + dnp_d
+                    diferencia = abs(suma_dnp - dip)
+                    if diferencia < 0.5:
+                        pdf.multi_cell(0, 6, self.texto_seguro(f"✓ Verificación: DNP_I + DNP_D = {suma_dnp:.2f} cm ≈ DIP ({dip:.2f} cm)"))
+                    else:
+                        pdf.multi_cell(0, 6, self.texto_seguro(f"⚠ Nota: Diferencia de {diferencia:.2f} cm entre suma de DNPs y DIP"))
+                
+                if 'recomendacion_puente' in medidas_optometria:
+                    rec = medidas_optometria['recomendacion_puente']
+                    pdf.set_font('Arial', 'B', 11)
+                    pdf.cell(0, 7, self.texto_seguro('Puente Recomendado:'), 0, 1, 'L')
+                    pdf.set_font('Arial', '', 10)
+                    pdf.multi_cell(0, 6, self.texto_seguro(f"• Tamaño: {rec.get('tamano', 'N/A')}"))
+                    if 'razon' in rec:
+                        pdf.multi_cell(0, 6, self.texto_seguro(f"• Razón: {rec.get('razon', '')}"))
+                
+                if 'recomendacion_calibre' in medidas_optometria:
+                    rec = medidas_optometria['recomendacion_calibre']
+                    pdf.set_font('Arial', 'B', 11)
+                    pdf.cell(0, 7, self.texto_seguro('Calibre Recomendado:'), 0, 1, 'L')
+                    pdf.set_font('Arial', '', 10)
+                    pdf.multi_cell(0, 6, self.texto_seguro(f"• {rec.get('calibre', 'N/A')}"))
+                    if 'rango' in rec:
+                        pdf.multi_cell(0, 6, self.texto_seguro(f"• Rango: {rec.get('rango', '')}"))
+                
+                if 'asimetria_cm' in medidas_optometria:
+                    asimetria = medidas_optometria['asimetria_cm']
+                    pdf.set_font('Arial', 'B', 11)
+                    pdf.cell(0, 7, self.texto_seguro('Análisis de Simetría:'), 0, 1, 'L')
+                    pdf.set_font('Arial', '', 10)
+                    pdf.multi_cell(0, 6, self.texto_seguro(f"• Asimetría: {asimetria:.2f} cm"))
+                    
+                    if asimetria < 0.3:
+                        evaluacion = "Simetría excelente"
+                    elif asimetria < 0.5:
+                        evaluacion = "Simetría buena"
+                    elif asimetria < 0.8:
+                        evaluacion = "Ligera asimetría"
+                    else:
+                        evaluacion = "Asimetría notable"
+                    
+                    pdf.multi_cell(0, 6, self.texto_seguro(f"• Evaluación: {evaluacion}"))
+                
+                pdf.ln(5)
+            
+            # Nota final
+            pdf.set_font('Arial', 'I', 8)
+            pdf.set_text_color(100, 100, 100)
+            pdf.multi_cell(0, 5, self.texto_seguro(
+                "Nota: Estas medidas son estimaciones basadas en análisis de imagen. "
+                "Para medidas exactas consulte con un profesional."
+            ))
+            pdf.set_text_color(0, 0, 0)
+            
+        except Exception as e:
+            print(f"❌ Error en generar_seccion_medidas_reales: {e}")
+            import traceback
+            traceback.print_exc()
 
     def generar_seccion_tono_piel(self, pdf, tono_piel):
         """Generar sección de análisis de tono de piel con círculos de color mejorados - SIN BULLETS"""
@@ -730,7 +904,6 @@ class PDFReportGenerator:
             pdf.cell(0, 12, self.texto_seguro('RESULTADO PRINCIPAL'), 0, 1, 'L')
             pdf.set_font('Arial', '', 12)
             forma = analisis.get('forma', 'No detectada')
-            # Usar texto_seguro en lugar de codificación manual
             forma_seguro = self.texto_seguro(forma)
             descripcion_seguro = self.texto_seguro(analisis.get('descripcion', 'No disponible'))
             
@@ -747,9 +920,21 @@ class PDFReportGenerator:
                 print(f"✅ PDF: Figura encontrada ({file_size} bytes)")
                 
                 if file_size > 0:
-                    pdf.image(temp_figura, x=10, y=pdf.get_y(), w=190)
-                    pdf.ln(120)
-                    print("✅ PDF: Figura agregada al PDF")
+                    # Calcular posición Y para centrar la imagen
+                    current_y = pdf.get_y()
+                    # Altura máxima disponible
+                    available_height = 297 - current_y - 20  # A4 height = 297mm, margen inferior 20mm
+                    image_height = 120  # Altura fija para la imagen
+                    
+                    if image_height < available_height:
+                        pdf.image(temp_figura, x=10, y=current_y, w=190, h=image_height)
+                        pdf.set_y(current_y + image_height + 10)  # Mover cursor después de la imagen
+                        print("✅ PDF: Figura agregada al PDF")
+                    else:
+                        # Si no hay espacio, agregar nueva página
+                        pdf.add_page()
+                        pdf.image(temp_figura, x=10, y=20, w=190, h=120)
+                        pdf.set_y(150)
                 else:
                     pdf.multi_cell(0, 8, self.texto_seguro("Figura de analisis no disponible"))
                 
@@ -782,6 +967,10 @@ class PDFReportGenerator:
             # Sección de tono de piel si está disponible
             if 'tono_piel' in analisis:
                 self.generar_seccion_tono_piel(pdf, analisis['tono_piel'])
+            
+            # Página FINAL - MEDIDAS REALES (al final como solicitas)
+            pdf.add_page()
+            self.generar_seccion_medidas_reales(pdf, analisis)
             
             pdf.output(output_path)
             print(f"✅ PDF: Generado exitosamente: {output_path}")

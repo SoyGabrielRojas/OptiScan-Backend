@@ -13,6 +13,7 @@ from pdf import PDFReportGenerator
 import traceback
 import subprocess
 import json
+from mm import analizar_imagen_con_medidas_reales, PDFReportGeneratorExtendido
 
 app = Flask(__name__)
 CORS(app)
@@ -243,6 +244,16 @@ def generate_pdf_report():
         # Analizar forma de rostro
         analisis_result = analizador.analizar_rostro(temp_img_path)
         
+        # --- INTEGRAR MEDIDAS REALES ---
+        if analisis_result and analisis_result.get('estado') == 'exitoso':
+            print("🔄 Integrando medidas reales...")
+            analisis_result = analizar_imagen_con_medidas_reales(base64_image, analisis_result)
+            
+            if 'medidas_convertidas' in analisis_result:
+                print("✅ Medidas reales integradas exitosamente")
+            else:
+                print("⚠️ No se pudieron integrar medidas reales")
+        
         # Analizar tono de piel
         tono_result = ejecutar_analisis_tono(temp_img_path)
         
@@ -251,27 +262,25 @@ def generate_pdf_report():
             analisis_result['tono_piel'] = tono_result
             print("✅ Análisis de tono de piel agregado al reporte")
         
-        # DEBUG: Verificar estructura del análisis
-        print(f"🔍 DEBUG - Análisis recibido:")
-        print(f"  ✅ Forma: {analisis_result.get('forma')}")
-        print(f"  ✅ Recomendaciones: {len(analisis_result.get('recomendaciones', []))}")
-        print(f"  ✅ Tono piel incluido: {'tono_piel' in analisis_result}")
-        
-        for i, rec in enumerate(analisis_result.get('recomendaciones', [])):
-            print(f"  📋 Rec {i+1}: {rec.get('name')}")
-            print(f"    🔍 Optical fit: {rec.get('optical_fit', 'NO ENCONTRADO')}")
-        
         # Limpiar imagen temporal
         if os.path.exists(temp_img_path):
             os.remove(temp_img_path)
         
         if not analisis_result or analisis_result.get('estado') == 'error':
             return jsonify({'success': False, 'error': 'Error en análisis facial'}), 400
-        
-        # Generar PDF usando el nuevo método (ahora con tono de piel)
-        pdf_path = pdf_generator.procesar_imagen_y_generar_pdf(analisis_result, temp_pdf_path)
+
+        print("📄 Generando PDF completo con PDFReportGenerator...")
+        pdf_path = pdf_generator.generar_pdf(analisis_result, temp_pdf_path)
         
         if pdf_path and os.path.exists(pdf_path):
+            # Verificar tamaño del PDF
+            file_size = os.path.getsize(pdf_path)
+            print(f"✅ PDF generado: {pdf_path} ({file_size} bytes)")
+            
+            if file_size == 0:
+                print("❌ PDF generado está vacío")
+                return jsonify({'success': False, 'error': 'PDF vacío generado'}), 500
+            
             response = send_file(
                 pdf_path,
                 as_attachment=True,
@@ -290,6 +299,7 @@ def generate_pdf_report():
             
             return response
         else:
+            print("❌ No se pudo generar el PDF")
             return jsonify({'success': False, 'error': 'Error generando PDF report'}), 500
             
     except Exception as e:
