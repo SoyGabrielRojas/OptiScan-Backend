@@ -5,6 +5,7 @@ import json
 import os
 import base64
 import tempfile
+from mm import analizar_imagen_con_medidas_reales
 
 app = Flask(__name__)
 CORS(app)
@@ -273,7 +274,14 @@ def analyze_complete():
                     line = line.strip()
                     if line.startswith('{') and line.endswith('}'):
                         try:
-                            resultados['forma_rostro'] = json.loads(line)
+                            forma_data = json.loads(line)
+                            
+                            # --- AÑADIR MEDIDAS CONVERTIDAS AQUÍ ---
+                            # Importar la función (ajusta la ruta según tu estructura)
+                            from mm import analizar_imagen_con_medidas_reales
+                            forma_data = analizar_imagen_con_medidas_reales(image_base64, forma_data)
+                            
+                            resultados['forma_rostro'] = forma_data
                             break
                         except:
                             continue
